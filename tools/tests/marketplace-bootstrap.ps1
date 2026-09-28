@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
     Targeted tests for the marketplace wrapper around install.ps1.
@@ -28,7 +28,8 @@ function Read-Plan {
         [string]$Command,
         [string]$Tool = 'cursor',
         [string]$ProjectRoot,
-        [string]$Source
+        [string]$Source,
+        [string]$PlatformMode
     )
     $argList = @(
         '-NoProfile', '-ExecutionPolicy', 'Bypass',
@@ -39,7 +40,8 @@ function Read-Plan {
         '-DryRun'
     )
     if ($Source) { $argList += @('-Source', $Source) }
-    $raw = & powershell.exe @argList
+    if ($PlatformMode) { $argList += @('-PlatformMode', $PlatformMode) }
+    $raw = & (Get-Process -Id $PID).Path @argList
     if ($LASTEXITCODE -ne 0) { throw "DryRun failed: $raw" }
     $json = ($raw | Out-String).Trim()
     if (-not $json) { throw "DryRun produced no JSON" }
@@ -65,7 +67,7 @@ function Run-Case([string]$Name, [scriptblock]$Body) {
     }
 }
 
-$work = Join-Path $env:TEMP ("1c-rules-mp-" + [guid]::NewGuid().ToString('N'))
+$work = Join-Path ([IO.Path]::GetTempPath()) ("1c-rules-mp-" + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $work | Out-Null
 try {
     Run-Case 'source walks up to this checkout' {
@@ -81,8 +83,13 @@ try {
         if (-not $plan.installer) { throw 'installer path missing for a local checkout' }
     }
 
+    Run-Case 'remote mode is included in explicit install plan' {
+        $plan = Read-Plan -Command init -Tool cursor -ProjectRoot $work -PlatformMode remote
+        Assert-Eq $plan.platformMode 'remote' 'remote mode missing from plan'
+    }
+
     Run-Case 'forbidden home is skipped' {
-        $plan = Read-Plan -Command ensure -Tool cursor -ProjectRoot $env:USERPROFILE
+        $plan = Read-Plan -Command ensure -Tool cursor -ProjectRoot ([Environment]::GetFolderPath('UserProfile'))
         Assert-Eq $plan.action 'skip' 'home must skip'
         Assert-Eq $plan.reason 'forbidden-root' 'home reason'
     }

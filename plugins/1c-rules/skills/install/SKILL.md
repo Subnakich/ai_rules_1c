@@ -26,7 +26,16 @@ This plugin does not copy `content/rules` into the host. It calls `install.ps1`,
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "<plugin>/scripts/invoke-install.ps1" -Action init -Tool <tool-id> -ProjectRoot "<project-root>"
 ```
 
-On machines with `pwsh`, that binary is fine too. The script finds the local `1c-rules` checkout when you are developing this repo; otherwise it clones `https://github.com/comol/ai_rules_1c.git` and runs that `install.ps1`.
+On machines with `pwsh`, that binary is fine too. The script finds the local `1c-rules` checkout when you are developing this repo; otherwise it clones `https://github.com/Subnakich/ai_rules_1c.git` and runs that `install.ps1`.
+
+For macOS with 1C on a remote server, use the shell entry point and persist the mode:
+
+```sh
+sh "<plugin>/scripts/invoke-install.sh" init <tool-id> -ProjectRoot "<project-root>" -PlatformMode remote
+```
+
+This requires PowerShell 7 (`pwsh`). Set the project's `MCP_URL_<SERVER_ID>` values
+in `.dev.env`; see the source repository's `MACOS.md`. No local 1C platform is needed.
 
 3. Read the installer output. Success ends with the usual `install.ps1` verification lines. Do not claim success if a frontmatter gate failed.
 4. Tell the user to restart the AI client if MCP configs changed.

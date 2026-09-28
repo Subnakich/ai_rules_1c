@@ -1,11 +1,11 @@
 ---
-description: Update the 1c-rules ruleset from GitHub (https://github.com/comol/ai_rules_1c)
+description: Update the 1c-rules ruleset from GitHub (https://github.com/Subnakich/ai_rules_1c)
 userOnly: true
 ---
 
 # /updaterules — update 1c-rules
 
-Source: `https://github.com/comol/ai_rules_1c`.
+Source: `https://github.com/Subnakich/ai_rules_1c`.
 
 Action: update managed files in the current installation to the latest repository version (on-demand rules, subagent descriptions, slash commands, SKILL packages, MCP config, OpenSpec bundle, rendered `AGENTS.md`). Preserve:
 
@@ -13,19 +13,22 @@ Action: update managed files in the current installation to the latest repositor
 - contents of `openspec/specs/` and `openspec/changes/` — copied in skip-if-exists mode;
 - any managed file marked `userModified: true` in `.ai-rules.json`.
 
+On macOS use `pwsh` / `install.sh`; preserve `PLATFORM_MODE` and configured remote
+MCP endpoints. Updating rules does not update the remote server or its sources.
+
 ## Steps
 
 1. Make sure `.ai-rules.json` exists at the project root. If it is missing, this is a first install: run `init` by `AGENT-INSTALL.md`, not `/updaterules`.
 
-2. **Prefer the PowerShell channel** from the project root. `install.ps1` expects a local path in `-Source`, so first clone or update the source into a cache under `$env:TEMP`:
+2. **Prefer the PowerShell channel** from the project root. Clone or update the source into a fork-specific directory under the system temporary directory:
 
 ```powershell
-$src = Join-Path $env:TEMP '1c-rules'
+$src = Join-Path ([IO.Path]::GetTempPath()) 'subnakich-1c-rules'
 if (Test-Path (Join-Path $src '.git')) {
     git -C $src fetch --depth 1 origin HEAD
     git -C $src reset --hard FETCH_HEAD
 } else {
-    git clone --depth 1 https://github.com/comol/ai_rules_1c.git $src
+    git clone --depth 1 https://github.com/Subnakich/ai_rules_1c.git $src
 }
 & "$src\install.ps1" update -Source $src -AssumeYes
 ```

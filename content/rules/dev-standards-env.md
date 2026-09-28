@@ -49,6 +49,15 @@ Both these parameters and the practices they govern — adding a project prefix 
 - **Both fallbacks are independent** — an empty `PREFIX` does not suppress markers, and empty `COMPANY` / `DEVELOPER` does not enable a prefix.
 - **`{TASK}` is irrelevant when markers are not emitted** — do not ask for it.
 
+### Host execution and MCP endpoints
+
+`PLATFORM_MODE=local|remote` selects where platform operations run; empty means
+`local` for compatibility. `remote` routes through `content/rules/remote-platform.md`
+and never requires a local platform installation. Set it explicitly for a Mac
+workstation connected to a remote 1C host. MCP endpoint overrides in `.dev.env`
+use `MCP_URL_<SERVER_ID>` (uppercase, punctuation replaced by `_`); the remote rule
+owns their precedence and path-mapping contract.
+
 ### Infobase / deployment parameters
 
 Used by `/loadfrom1cbase`, `/update1cbase`, `/getconfigfiles`, `/deploy-and-test`, the full-cycle commands (`/initproject`, `/restore-testbase`, `/test-fix-loop`, `/build-release`) and the `1c-tester` subagent. **Not consulted at all for pure code, review, analysis, or documentation tasks** — pure code work proceeds even when this entire block is empty.

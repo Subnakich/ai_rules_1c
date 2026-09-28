@@ -29,11 +29,13 @@ param(
 
     [string]$ProjectRoot,
     [string]$Source,
+    [ValidateSet('local', 'remote')]
+    [string]$PlatformMode,
     [switch]$DryRun
 )
 
 $ErrorActionPreference = 'Stop'
-$script:DefaultSourceUrl = 'https://github.com/comol/ai_rules_1c.git'
+$script:DefaultSourceUrl = 'https://github.com/Subnakich/ai_rules_1c.git'
 
 function Get-NormalizedPath {
     param([string]$Path)
@@ -221,7 +223,10 @@ function Get-SourceTreeFromUrl {
         throw "Source is a URL ($Url) but git was not found in PATH."
     }
     $cacheRoot = if ($env:TEMP) { $env:TEMP } else { [System.IO.Path]::GetTempPath() }
-    $cacheDir = Join-Path $cacheRoot '1c-rules-source-marketplace'
+    $sha = [Security.Cryptography.SHA256]::Create()
+    try { $hash = ([BitConverter]::ToString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($Url)))).Replace('-', '').Substring(0, 12).ToLowerInvariant() }
+    finally { $sha.Dispose() }
+    $cacheDir = Join-Path $cacheRoot "1c-rules-source-marketplace-$hash"
     if (Test-Path (Join-Path $cacheDir '.git')) {
         & git -C $cacheDir fetch --depth 1 origin HEAD 2>&1 | Out-Null
         if ($LASTEXITCODE -ne 0) { throw "git fetch failed for $Url (exit $LASTEXITCODE)." }
@@ -254,6 +259,7 @@ function New-Plan {
         source      = $SourceRoot
         tool        = $HostTool
         installer   = $Installer
+        platformMode = $PlatformMode
     }
 }
 
@@ -335,16 +341,25 @@ function Invoke-InstallPlan {
     }
     $installPs1 = Join-Path $sourceRoot 'install.ps1'
 
+    # Named parameters must use dictionary splatting. An array containing
+    # '-Tools', 'cursor', etc. is bound positionally when invoking another .ps1.
+    $installParams = @{
+        Command = [string]$Plan.action
+        ProjectRoot = [string]$Plan.projectRoot
+        Source = $sourceRoot
+        AssumeYes = $true
+        NonInteractive = $true
+    }
     switch ($Plan.action) {
-        'init'   { $fileArgs = @('init', '-Tools', $Plan.tool, '-ProjectRoot', $Plan.projectRoot, '-Source', $sourceRoot, '-AssumeYes', '-NonInteractive') }
-        'add'    { $fileArgs = @('add', '-Tool', $Plan.tool, '-ProjectRoot', $Plan.projectRoot, '-Source', $sourceRoot, '-AssumeYes', '-NonInteractive') }
-        'update' { $fileArgs = @('update', '-ProjectRoot', $Plan.projectRoot, '-Source', $sourceRoot, '-AssumeYes', '-NonInteractive') }
-        'doctor' { $fileArgs = @('doctor', '-ProjectRoot', $Plan.projectRoot) }
+        'init'   { $installParams.Tools = @([string]$Plan.tool) }
+        'add'    { $installParams.Tool = [string]$Plan.tool }
+        'update' { }
+        'doctor' { }
         default  { throw "Unknown plan action: $($Plan.action)" }
     }
-
+    if ($Plan.platformMode) { $installParams.PlatformMode = [string]$Plan.platformMode }
     Write-Host ("1c-rules bootstrap: {0} tool={1} project={2}" -f $Plan.action, $Plan.tool, $Plan.projectRoot)
-    & $installPs1 @fileArgs
+    & $installPs1 @installParams
     return $LASTEXITCODE
 }
 

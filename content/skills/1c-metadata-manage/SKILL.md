@@ -28,6 +28,13 @@ PowerShell examples in this skill (`SKILL.md` and every `docs/*.md`) use the pre
 
 The same convention applies to `docs/*.md` references like `skills/1c-metadata-manage/tools/1c-skd-info/modes-reference.md`.
 
+## Remote execution
+
+With `PLATFORM_MODE=remote`, read `content/rules/remote-platform.md` before any
+platform-dependent operation. Local XML tools remain subject to runtime support;
+DB operations, EPF build/dump and web publication execute on the configured server,
+never by interpreting a server path as a Mac path.
+
 ## Runtime selection — Windows / Linux / macOS
 
 XML saving in `form-edit`, `form-add`, `remove-form`, `form-compile` registration, `meta-edit`, `cf-edit`, `cfe-borrow` registration/merge, `skd-edit`, `subsystem-edit`, `subsystem-compile` registration, `interface-edit`, `add-template` and `add-help` retains the input CRLF/LF style and uses Configurator's compact empty tags (`<Tag/>`). Formatting-only changes should not be repaired by a global replacement that can alter literal XML in comments or CDATA.

@@ -1,5 +1,14 @@
 # 1c-rules — набор правил и инструментов разработки на 1С для ИИ-агентов
 
+## macOS + удалённая 1С
+
+Этот форк адаптирует установку правил для macOS с PowerShell 7 и работу с
+удалёнными MCP. Платформа и база остаются на сервере. Начните с
+[инструкции для macOS](MACOS.md). Режим `PLATFORM_MODE=remote` задаёт границу
+выполнения; он сам не создаёт SSH-подключение и не синхронизирует исходники.
+
+Исходный проект: [comol/ai_rules_1c](https://github.com/comol/ai_rules_1c).
+
 ## Концепт работы: Mode × Quality × Orchestration × UI
 
 Четыре независимых выбора определяют **что делаем, насколько глубоко проверяем, кому поручаем работу и запускаем ли UI-тесты**. Обычные проверки результата входят в рабочий цикл; браузерные проверки включаются отдельно.
@@ -66,28 +75,28 @@
 
 Каталог — этот репозиторий. Плагин вызывает `install.ps1` и не копирует `content/rules` в always-on правила хоста.
 
-**Cursor** — Dashboard → Plugins → import `https://github.com/comol/ai_rules_1c`, затем плагин `1c-rules`.
+**Cursor** — Dashboard → Plugins → import `https://github.com/Subnakich/ai_rules_1c`, затем плагин `1c-rules`.
 
 **Claude Code**
 
 ```sh
-claude plugin marketplace add comol/ai_rules_1c
+claude plugin marketplace add Subnakich/ai_rules_1c
 claude plugin install 1c-rules@1c-rules
 ```
 
 **Codex**
 
 ```sh
-codex plugin marketplace add comol/ai_rules_1c --ref main
+codex plugin marketplace add Subnakich/ai_rules_1c --ref main
 codex plugin add 1c-rules@1c-rules
 ```
 
-В приложении Codex: Plugins → Add More → `https://github.com/comol/ai_rules_1c.git`.
+В приложении Codex: Plugins → Add More → `https://github.com/Subnakich/ai_rules_1c.git`.
 
 **OpenCode**
 
 ```sh
-opencode plugin marketplace add comol/ai_rules_1c
+opencode plugin marketplace add Subnakich/ai_rules_1c
 opencode plugin marketplace install 1c-rules
 ```
 
@@ -131,7 +140,7 @@ opencode plugin marketplace install 1c-rules
 
 Установка спроектирована как протокол, который выполняет сам ИИ-агент. Откройте проект в любимом ИИ-агенте (Cursor / Claude Code / Codex / OpenCode / Kilo Code / Kimi / Qwen / Command Code / Cline / Pi) и отправьте сообщение:
 
-> Установи правила из `https://github.com/comol/ai_rules_1c` по `AGENT-INSTALL.md`.
+> Установи правила из `https://github.com/Subnakich/ai_rules_1c` по `AGENT-INSTALL.md`.
 
 Всё. Остальное — клонирование репозитория, определение активных инструментов, миграция существующих `AGENTS.md` / `CLAUDE.md`, запросы перед разрушительными действиями — описано в [`AGENT-INSTALL.md`](AGENT-INSTALL.md), который агент прочитает сам.
 
@@ -146,7 +155,7 @@ opencode plugin marketplace install 1c-rules
 Если агент не справляется (ограниченная среда, нет FS-доступа, нужен детерминированный CI-запуск) — тот же протокол реализован как PowerShell-скрипт `install.ps1`:
 
 ```powershell
-git clone https://github.com/comol/ai_rules_1c.git $env:TEMP\1c-rules
+git clone https://github.com/Subnakich/ai_rules_1c.git $env:TEMP\1c-rules
 & $env:TEMP\1c-rules\install.ps1 init -Source $env:TEMP\1c-rules
 ```
 
@@ -155,7 +164,7 @@ git clone https://github.com/comol/ai_rules_1c.git $env:TEMP\1c-rules
 Параметр `-Source` также принимает URL напрямую — в этом случае установщик сам делает shallow-clone в кэш под `$env:TEMP` (ключ кэша — хэш URL) и переиспользует его при повторных запусках; требует `git` в `PATH`:
 
 ```powershell
-.\install.ps1 init -Source https://github.com/comol/ai_rules_1c
+.\install.ps1 init -Source https://github.com/Subnakich/ai_rules_1c
 ```
 
 Команды: `init` / `update` / `add <tool>` / `remove [<tool>]` / `doctor` / `eject`.
