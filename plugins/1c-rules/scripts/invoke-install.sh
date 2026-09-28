@@ -10,5 +10,7 @@ fi
 if command -v powershell.exe >/dev/null 2>&1; then
   exec powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$DIR/invoke-install.ps1" -Action "$CMD" -Tool "$TOOL" "$@"
 fi
-echo "1c-rules installer needs PowerShell 5.1+ or pwsh" >&2
-exit 0
+echo "1c-rules: требуется PowerShell 7 (pwsh) на macOS/Linux или PowerShell 5.1+ на Windows." >&2
+# An optional session hook must not block the client; explicit commands must fail.
+[ "$CMD" = ensure ] && exit 0
+exit 127

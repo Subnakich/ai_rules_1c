@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
     Offline installer regressions for ZCode, MiMo Code, Kimi, Cline and Command Code.
@@ -33,7 +33,7 @@ function Read-Json([string]$Path) {
 
 function Invoke-Installer([string]$Project, [string[]]$Arguments, [switch]$ExpectFailure) {
     $log = Join-Path $Work ('run-' + [guid]::NewGuid().ToString('N') + '.log')
-    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $Installer @Arguments `
+    & (Get-Process -Id $PID).Path -NoProfile -ExecutionPolicy Bypass -File $Installer @Arguments `
         -ProjectRoot $Project -Source $SourceRoot -NonInteractive -McpMode managed *> $log
     $code = $LASTEXITCODE
     if (($code -ne 0) -ne [bool]$ExpectFailure) {

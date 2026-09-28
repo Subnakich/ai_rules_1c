@@ -8,6 +8,7 @@ All CLI cases use temp fixtures; lifecycle methods and socket probes are mocked.
 from __future__ import annotations
 
 import contextlib
+import ctypes
 import importlib.util
 import io
 import json
@@ -296,7 +297,20 @@ class WebRegression(unittest.TestCase):
 
     def test_process_identity_reads_this_process_without_mutation(self):
         identity = web.process_identity(os.getpid())
-        self.assertEqual(os.path.normcase(os.path.realpath(sys.executable)), identity["exe"])
+        executable = sys.executable
+        if sys.platform == "darwin":
+            # Framework Python can exec Python.app: sys.executable still names
+            # its CLI launcher. Ask dyld for the running image independently
+            # of process_identity's ps-based implementation.
+            get_path = ctypes.CDLL(None)._NSGetExecutablePath
+            get_path.argtypes = [ctypes.POINTER(ctypes.c_char), ctypes.POINTER(ctypes.c_uint32)]
+            get_path.restype = ctypes.c_int
+            size = ctypes.c_uint32(0)
+            get_path(None, ctypes.byref(size))
+            buffer = ctypes.create_string_buffer(size.value)
+            self.assertEqual(get_path(buffer, ctypes.byref(size)), 0)
+            executable = os.fsdecode(buffer.value)
+        self.assertEqual(os.path.normcase(os.path.realpath(executable)), identity["exe"])
         self.assertTrue(identity["birth"])
 
     def test_managed_publish_stops_then_starts_and_stop_dry_run_is_safe(self):

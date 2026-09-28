@@ -13,7 +13,7 @@ name: validate-rules
 #   validate (windows) — the ruleset validator, the PowerShell tool regressions,
 #     and the full Python suite including the PowerShell/Python parity and
 #     installer packaging gates, which need a PowerShell host.
-#   python-ports (linux) — the safety contract of the Python ports on the
+#   python-ports (linux/macOS) — the safety contract of the Python ports on the
 #     platform they exist for. Runs with --python-only, so the PowerShell-bound
 #     cases are skipped rather than silently passing.
 #
@@ -62,6 +62,10 @@ jobs:
       - name: Validate ruleset structure
         shell: powershell
         run: .\tools\validate-rules.ps1
+
+      - name: Remote workstation settings
+        shell: powershell
+        run: .\tools\tests\remote-platform.ps1
 
       - name: Tool policy settings migration
         shell: powershell
@@ -114,7 +118,10 @@ jobs:
         run: python -B "tools/tests/web-python-regression.py"
 
   python-ports:
-    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
 
@@ -125,7 +132,7 @@ jobs:
       - name: Install Python port dependencies
         run: python -m pip install --disable-pip-version-check "lxml>=4.9.0"
 
-      # The reason the ports exist: a Linux install has to be able to run them.
+      # Unix installs must be able to run the shipped Python ports.
       # --python-only skips the cases that need a PowerShell host; Windows owns
       # those. -B keeps __pycache__ out of the tree.
       - name: Python port safety contract
@@ -133,3 +140,24 @@ jobs:
 
       - name: Python web operation regressions (offline)
         run: python -B "tools/tests/web-python-regression.py"
+
+  macos-installer:
+    runs-on: macos-latest
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate ruleset structure
+        run: ./tools/validate-rules.ps1
+      - name: Installer paths and hidden OpenSpec bundles
+        run: ./tools/tests/installer-paths-regression.ps1
+      - name: Adapter lifecycle
+        run: ./tools/tests/agent-adapters.ps1
+      - name: Marketplace bootstrap
+        run: ./tools/tests/marketplace-bootstrap.ps1
+      - name: Remote workstation settings
+        run: ./tools/tests/remote-platform.ps1
+      - name: Shell launchers
+        shell: bash
+        run: python3 -B tools/tests/unix-launchers.py

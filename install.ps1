@@ -71,6 +71,12 @@
     the external installation (fail if the env signal or manifest is
     missing) and skip MCP config rendering.
 
+.PARAMETER PlatformMode
+    local (default) runs platform operations on this host; remote keeps 1C on a
+    separate server. An explicit value is saved as PLATFORM_MODE in .dev.env.
+    Remote mode renders only explicitly configured MCP_URL_<SERVER_ID> endpoints
+    (or publication-derived 1c-data-mcp) and skips the initial local source dump.
+    This option does not configure SSH, deploy or source synchronization.
 .PARAMETER ProjectRoot
     Project root directory to install into. Defaults to the current working
     directory. Use this when invoking install.ps1 from a different location
@@ -87,10 +93,10 @@
     & "$env:TEMP\install.ps1" init -ProjectRoot "C:\Work\MyProject" -Source "$env:TEMP\1c-rules" -AssumeYes
 
 .EXAMPLE
-    .\install.ps1 init -Source https://github.com/comol/ai_rules_1c -AssumeYes
+    .\install.ps1 init -Source https://github.com/Subnakich/ai_rules_1c -AssumeYes
 
 .NOTES
-    Target: Windows PowerShell 5.1+ (compatible with PowerShell 7+).
+    Target: Windows PowerShell 5.1+; PowerShell 7+ on macOS/Linux for rules installation.
     Protocol version: 1.0. See AGENT-INSTALL.md for the specification.
 #>
 
@@ -106,6 +112,8 @@ param(
     [string[]]$Tools,
     [string]$Source,
     [string]$ProjectRoot,
+    [ValidateSet('local', 'remote')]
+    [string]$PlatformMode,
     [switch]$NonInteractive,
     [switch]$AssumeYes,
     [switch]$Force,
@@ -938,6 +946,46 @@ function Resolve-McpServerPlaceholders {
     return , $unresolved
 }
 
+function Get-PlatformMode {
+    param([string]$Root)
+    if ($PlatformMode) { return $PlatformMode }
+    $settings = Read-DevEnvKeys -Path (Join-Path $Root $script:DevEnvFileName)
+    $mode = ([string]$settings['PLATFORM_MODE']).Trim().Trim('"', "'").ToLowerInvariant()
+    if (-not $mode) { return 'local' }
+    if ($mode -notin @('local', 'remote')) { throw 'PLATFORM_MODE must be local or remote.' }
+    return $mode
+}
+
+function Resolve-ProjectMcpServers {
+    # Explicit project endpoints support remote hosts, reverse proxies and tunnels.
+    # In remote mode, never silently connect to the catalogue's local services.
+    param([array]$Servers, [string]$Root)
+    $settings = Read-DevEnvKeys -Path (Join-Path $Root $script:DevEnvFileName)
+    $remote = (Get-PlatformMode -Root $Root) -eq 'remote'
+    foreach ($server in $Servers) {
+        $key = 'MCP_URL_' + ($server.id.ToUpperInvariant() -replace '[^A-Z0-9]', '_')
+        $url = ([string]$settings[$key]).Trim().Trim('"', "'")
+        if ($url) {
+            $uri = $null
+            if (-not [Uri]::TryCreate($url, [UriKind]::Absolute, [ref]$uri) -or
+                $uri.Scheme -notin @('http', 'https') -or -not $uri.Host -or $uri.UserInfo -or $uri.Fragment) {
+                throw "Invalid ${key}: use an absolute HTTP(S) URL without user info or fragment."
+            }
+            $server.url = $url
+        }
+        elseif ($remote) {
+            if ($server.url -match '\{INFOBASE_PUBLISH_URL\}' -and (Get-InfobasePublishUrlBase -Root $Root)) {
+                # Resolved by the existing publication URL normalizer below.
+            }
+            else {
+                Write-Warn "  MCP: $($server.id) skipped in remote mode; configure $key in .dev.env."
+                continue
+            }
+        }
+        $server
+    }
+}
+
 function Resolve-McpServerHeadersFromEnv {
     # Secret headers are described in the public catalogue by environment
     # variable name, never by value. Resolve them only in memory immediately
@@ -1675,7 +1723,7 @@ function Invoke-OpenSpecArtifacts {
         }
         $toolCopied = 0
         $toolKept = 0
-        Get-ChildItem -Recurse -File -Path $toolBundle -ErrorAction SilentlyContinue | ForEach-Object {
+        Get-ChildItem -Recurse -Force -File -Path $toolBundle -ErrorAction SilentlyContinue | ForEach-Object {
             $rel = Get-InstallerRelativePath -BasePath $toolBundle -ChildPath $_.FullName
             $destRel = Get-OpenSpecBundleDestRel -Tool $tool -Rel $rel
             if ($Manifest.files.Contains($destRel)) {
@@ -2847,7 +2895,7 @@ function Invoke-McpPhase {
         [hashtable]$Adapters,
         [System.Collections.IDictionary]$Manifest
     )
-    $servers = Read-McpServers -Root $SourceRoot
+    $servers = @(Resolve-ProjectMcpServers -Servers @(Read-McpServers -Root $SourceRoot) -Root $Root)
 
     # Substitute {INFOBASE_PUBLISH_URL} placeholders in server URLs from the
     # project's .dev.env (Place-DevEnv runs earlier in the pipeline so the
@@ -2879,6 +2927,10 @@ function Invoke-McpPhase {
         if ($s.url -match '\{INFOBASE_PUBLISH_URL\}') { continue }  # already warned above
         if ($s.url -notmatch '/hs/') { continue }                   # only HTTP-service URLs
         $probe = Test-McpHttpEndpoint -Url $s.url -TimeoutSec 3
+        if ((Get-PlatformMode -Root $Root) -eq 'remote' -and [string]$probe.Code -in @('401', '403')) {
+            Write-Warn ("  MCP: " + $s.id + " требует аутентификацию или права. Настройте поддерживаемую клиентом авторизацию; не отключайте защиту удалённого сервиса.")
+            continue
+        }
         switch -Regex ([string]$probe.Code) {
             '^401$' {
                 Write-Warn ("  MCP config: " + $s.id + " — endpoint " + $s.url + " вернул HTTP 401 (требуется Basic-аутентификация).")
@@ -4098,6 +4150,10 @@ function Invoke-InitialSourceDump {
             ($value.StartsWith("'") -and $value.EndsWith("'")))) { $value = $value.Substring(1, $value.Length - 2) }
         $settings[$key] = $value
     }
+    if ((Get-PlatformMode -Root $Root) -eq 'remote') {
+        Write-Info 'PLATFORM_MODE=remote: начальная выгрузка выполняется на сервере; локальный запуск пропущен.'
+        return
+    }
     if ([string]::IsNullOrWhiteSpace($settings['INFOBASE_PATH'])) { return }
     try {
         if (Test-InitialDumpSources -Root $Root) { return }
@@ -4258,7 +4314,15 @@ function Place-DevEnv {
         return
     }
 
+    $effectiveMode = Get-PlatformMode -Root $Root
     if (Test-Path $target) {
+        if ($PlatformMode) {
+            $existingText = Read-TextFile $target
+            Write-TextFile -Path $target -Content (Set-DevEnvValue -Text $existingText -Key 'PLATFORM_MODE' -Value $PlatformMode)
+            if ($Manifest.files.Contains($script:DevEnvFileName)) {
+                $Manifest.files[$script:DevEnvFileName].installedHash = Get-FileSha256 $target
+            }
+        }
         if (-not $Manifest.files.Contains($script:DevEnvFileName)) {
             $Manifest.files[$script:DevEnvFileName] = [ordered]@{
                 source        = $script:DevEnvExampleName
@@ -4274,10 +4338,11 @@ function Place-DevEnv {
     # Detect what we can without asking
     $info = Get-1cProjectInfo -Root $Root
     $detectedVersion = if ($info.PlatformVersion) { $info.PlatformVersion } else { '' }
-    $detectedPath    = Find-PlatformPath -PreferredVersion $detectedVersion
+    $detectedPath    = if ($effectiveMode -eq 'local') { Find-PlatformPath -PreferredVersion $detectedVersion } else { '' }
     $detectedPrefix  = if ($info.NamePrefix) { $info.NamePrefix } else { '' }
 
     $text = Read-TextFile $source
+    $text = Set-DevEnvValue -Text $text -Key 'PLATFORM_MODE' -Value $effectiveMode
 
     # Prefill auto-detected values
     if ($detectedVersion) { $text = Set-DevEnvValue -Text $text -Key 'PLATFORM_VERSION' -Value $detectedVersion }
@@ -4293,7 +4358,7 @@ function Place-DevEnv {
         $val = Read-Required 'COMPANY (название компании/проекта для комментариев)' '';                                                       if ($val) { $text = Set-DevEnvValue -Text $text -Key 'COMPANY'             -Value $val }
         $val = Read-Required 'DEVELOPER (идентификатор разработчика)'                ''; if (-not $val) { $val = $env:USERNAME };             if ($val) { $text = Set-DevEnvValue -Text $text -Key 'DEVELOPER'           -Value $val }
         if (-not $detectedVersion) { $val = Read-Required 'PLATFORM_VERSION (мин. совместимость, напр. 8.3.23)' '';                            if ($val) { $text = Set-DevEnvValue -Text $text -Key 'PLATFORM_VERSION'    -Value $val } }
-        if (-not $detectedPath)    { $val = Read-Required 'PLATFORM_PATH (каталог установки 1С, содержит bin\1cv8.exe)' '';                    if ($val) { $text = Set-DevEnvValue -Text $text -Key 'PLATFORM_PATH'       -Value $val } }
+        if ($effectiveMode -eq 'local' -and -not $detectedPath) { $val = Read-Required 'PLATFORM_PATH (каталог установки 1С, содержит bin\1cv8.exe)' '';                    if ($val) { $text = Set-DevEnvValue -Text $text -Key 'PLATFORM_PATH'       -Value $val } }
         $kindAns = Read-Choice 'INFOBASE_KIND' @('file', 'server') 'file';                                                                     $text = Set-DevEnvValue -Text $text -Key 'INFOBASE_KIND' -Value $kindAns
         $val = Read-Required 'INFOBASE_PATH (путь к файловой ИБ или строка подключения)'  '';                                                  if ($val) { $text = Set-DevEnvValue -Text $text -Key 'INFOBASE_PATH'       -Value $val }
         $val = Read-Required 'IB_USER (пусто — без аутентификации, /N опускается)'         '';                                                  if ($val) { $text = Set-DevEnvValue -Text $text -Key 'IB_USER'             -Value $val }

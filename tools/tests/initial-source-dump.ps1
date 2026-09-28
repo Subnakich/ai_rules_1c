@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <# Offline first-install export tests. The platform wrapper is replaced by a stub. #>
 [CmdletBinding()]
 param()
@@ -10,7 +10,7 @@ $parseErrors = $null
 $ast = [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $repoRoot 'install.ps1'), [ref]$tokens, [ref]$parseErrors)
 if ($parseErrors.Count) { throw ($parseErrors | Out-String) }
 foreach ($name in @('Read-TextFile', 'Write-TextFile', 'Get-FileSha256', 'Read-DevEnvKeys',
-    'Set-DevEnvValue', 'Test-InitialDumpSources', 'Invoke-InitialSourceDump')) {
+    'Get-PlatformMode', 'Set-DevEnvValue', 'Test-InitialDumpSources', 'Invoke-InitialSourceDump')) {
     $fn = $ast.Find({ param($node) $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name }, $true)
     if (-not $fn) { throw "Missing function: $name" }
     . ([scriptblock]::Create($fn.Extent.Text))
@@ -178,7 +178,7 @@ exit 0
             'update' { @('update') }
             'add' { @('add', '-Tool', 'cursor') }
         }
-        $log = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $installer @arguments `
+        $log = & (Get-Process -Id $PID).Path -NoProfile -ExecutionPolicy Bypass -File $installer @arguments `
             -ProjectRoot $project -Source $source -NonInteractive -McpMode managed 2>&1 | Out-String
         Assert-True ($LASTEXITCODE -eq 0) "Installer $operation failed: $log"
         $offered = $log -match '/loadfrom1cbase full'
